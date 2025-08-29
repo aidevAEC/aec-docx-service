@@ -1,11 +1,12 @@
 {
-  "name": "aec-docx-service",
+  "name": "aec-docx-renderer",
   "version": "1.0.0",
   "type": "module",
+  "main": "server.mjs",
+  "scripts": { "start": "node server.mjs" },
   "dependencies": {
-    "docxtemplater": "3.39.0",
-    "express": "4.19.2",
-    "node-fetch": "3.3.2",
-    "pizzip": "3.1.7"
+    "docxtemplater": "^3.43.0",
+    "express": "^4.19.2",
+    "pizzip": "^3.1.7"
   }
 }
