@@ -1,42 +1,52 @@
 import express from "express";
-import fetch from "node-fetch";
 import PizZip from "pizzip";
 import Docxtemplater from "docxtemplater";
 
 const app = express();
-app.use(express.json({ limit: "10mb" }));
+app.use(express.json({ limit: "8mb" }));
 
-app.get("/health", (req, res) => res.json({ ok: true }));
+const API_KEY = process.env.API_KEY || "dev-key";
+
+app.get("/health", (_req, res) => res.json({ ok: true }));
 
 app.post("/render", async (req, res) => {
   try {
+    if (req.headers["x-api-key"] !== API_KEY) {
+      return res.status(401).json({ error: "unauthorized" });
+    }
     const { templateUrl, data } = req.body || {};
     if (!templateUrl || !data) {
-      return res.status(400).json({ error: "templateUrl and data required" });
+      return res.status(400).json({ error: "templateUrl and data are required" });
     }
 
-    const tplRes = await fetch(templateUrl);
-    if (!tplRes.ok) throw new Error(`Fetch template failed: ${tplRes.status}`);
-    const arrayBuf = await tplRes.arrayBuffer();
-    const tplBuf = Buffer.from(arrayBuf);
+    const r = await fetch(templateUrl);
+    if (!r.ok) return res.status(400).json({ error: "failed_to_fetch_template", status: r.status });
 
-    const zip = new PizZip(tplBuf);
+    const ab = await r.arrayBuffer();
+    const zip = new PizZip(Buffer.from(ab));
+
     const doc = new Docxtemplater(zip, { paragraphLoop: true, linebreaks: true });
     doc.setData(data);
-    doc.render();
 
-    const out = doc.getZip().generate({ type: "nodebuffer" });
-    const filename = (data.FileName || "AEC Letter Draft.docx").replace(/[\\/:*?\"<>|]+/g, "_");
-    res.set({
-      "Content-Type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      "Content-Disposition": `attachment; filename="${filename}"`
-    });
-    res.send(out);
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: e.message || "Render failed" });
+    try { doc.render(); }
+    catch (e) {
+      return res.status(400).json({
+        error: "template_render_error",
+        message: e.message,
+        details: e.properties?.errors?.map(er => ({
+          id: er.id, tag: er.properties?.tag, explanation: er.properties?.explanation
+        })) || []
+      });
+    }
+
+    const buf = doc.getZip().generate({ type: "nodebuffer" });
+    res.setHeader("Content-Type","application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+    res.setHeader("Content-Disposition",'attachment; filename="Filled.docx"');
+    res.send(buf);
+  } catch (err) {
+    res.status(500).json({ error: "server_error", message: err.message });
   }
 });
 
-const PORT = process.env.PORT || 8080;
-app.listen(PORT, () => console.log("AEC DOCX service running on port " + PORT));
+const port = process.env.PORT || 3000;
+app.listen(port, () => console.log("listening on", port));
